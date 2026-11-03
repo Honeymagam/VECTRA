@@ -9,7 +9,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The API is at `http://localhost:8000`; Swagger and the complete frontend-facing API contract are generated at `/docs` and `/openapi.json`.
+The API is at `http://localhost:8000`; Swagger and the complete frontend-facing API contract are generated at `/docs` and `/openapi.json`. Database tables are created exclusively by `alembic upgrade head` at container startup.
 
 ## Key API contract
 
@@ -23,7 +23,9 @@ All protected routes use `Authorization: Bearer <access_token>`. Register/login 
 | Intelligence | `/api/revision/*`, `/api/readiness*`, `/api/analytics/*` |
 | Assessment | `/api/mock-tests`, `/{id}/start`, `/{id}/submit` |
 
-`POST /api/search` body: `{"query":"percent increase", "top_k":5, "topic":"Percentages"}`. Tutor responses return retrieved source metadata. The local deterministic embedding provider is intended for development/testing; production PostgreSQL deployments should configure a provider implementation and migrate vector columns to pgvector `vector` types matching its dimensionality.
+`POST /api/search` body: `{"query":"percent increase", "top_k":5, "topic":"Percentages"}`. Tutor responses return retrieved source metadata. The local deterministic embedding provider is intended for development/testing. Set `EMBEDDING_PROVIDER=openai_compatible` with an API key to call an OpenAI-compatible `/embeddings` endpoint. PostgreSQL uses native pgvector storage and HNSW cosine indexes; SQLite remains for fast tests.
+
+Document upload returns `202 Accepted` and processes the file in a background task. PDFs with no embedded text use Tesseract OCR in the Docker image. The practice API now creates durable sessions: start with `POST /api/practice/start`, request a question from `POST /api/practice/{session_id}/next`, and submit one answer to `/answer`.
 
 ## Architecture
 
