@@ -6,5 +6,12 @@ __pycache__/
 .env
 *.db
 uploads/
+data/generated/
+.git/
+APT_dataset/
+Frontend.zip
+VECTRA/
+frontend/
+tests/
 tests/
 README.md

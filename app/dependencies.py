@@ -12,5 +12,5 @@ def current_user(token:str=Depends(oauth2), db:Session=Depends(get_db)):
     if not user: raise HTTPException(status_code=401,detail="User not found")
     return user
 def admin_user(user:User=Depends(current_user)):
-    if user.role != Role.ADMIN: raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Admin role required")
+    if user.role not in (Role.ADMIN, Role.EDUCATOR): raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="Educator or admin role required")
     return user

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 64
     upload_dir: Path = Path("./uploads")
-    max_upload_size_mb: int = 20
+    max_upload_size_mb: int = 5120
     cors_origins: str = "http://localhost:3000"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

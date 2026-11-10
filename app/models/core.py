@@ -6,7 +6,7 @@ from ..config import get_settings
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
 
-class Role(str, enum.Enum): STUDENT="STUDENT"; ADMIN="ADMIN"
+class Role(str, enum.Enum): STUDENT="STUDENT"; EDUCATOR="EDUCATOR"; ADMIN="ADMIN"
 class DocumentStatus(str, enum.Enum): UPLOADED="UPLOADED"; PROCESSING="PROCESSING"; COMPLETED="COMPLETED"; FAILED="FAILED"
 class Difficulty(str, enum.Enum): EASY="EASY"; MEDIUM="MEDIUM"; HARD="HARD"
 class RelationshipType(str, enum.Enum): PREREQUISITE="PREREQUISITE"; RELATED="RELATED"; DEPENDS_ON="DEPENDS_ON"; ADVANCED_VERSION="ADVANCED_VERSION"; COMMON_MISTAKE="COMMON_MISTAKE"
@@ -18,7 +18,7 @@ class Timestamped:
 class User(Timestamped, Base):
     __tablename__="users"; id: Mapped[int]=mapped_column(primary_key=True); name: Mapped[str]=mapped_column(String(120)); email: Mapped[str]=mapped_column(String(255), unique=True, index=True); password_hash: Mapped[str]=mapped_column(String(255)); role: Mapped[Role]=mapped_column(Enum(Role), default=Role.STUDENT)
 class StudentProfile(Timestamped, Base):
-    __tablename__="student_profiles"; id: Mapped[int]=mapped_column(primary_key=True); user_id: Mapped[int]=mapped_column(ForeignKey("users.id"), unique=True); current_level: Mapped[str]=mapped_column(String(30), default="MEDIUM"); target_companies: Mapped[list]=mapped_column(JSON, default=list); preferred_topics: Mapped[list]=mapped_column(JSON, default=list); overall_mastery: Mapped[float]=mapped_column(Float, default=0)
+    __tablename__="student_profiles"; id: Mapped[int]=mapped_column(primary_key=True); user_id: Mapped[int]=mapped_column(ForeignKey("users.id"), unique=True); current_level: Mapped[str]=mapped_column(String(30), default="MEDIUM"); goal: Mapped[str]=mapped_column(String(120), default="Get placed in a top company"); target_companies: Mapped[list]=mapped_column(JSON, default=list); preferred_topics: Mapped[list]=mapped_column(JSON, default=list); overall_mastery: Mapped[float]=mapped_column(Float, default=0)
 class Document(Base):
     __tablename__="documents"; id: Mapped[int]=mapped_column(primary_key=True); uploaded_by: Mapped[int]=mapped_column(ForeignKey("users.id"), index=True); filename: Mapped[str]=mapped_column(String(255)); file_type: Mapped[str]=mapped_column(String(20)); source_type: Mapped[str]=mapped_column(String(30), default="UPLOAD"); status: Mapped[DocumentStatus]=mapped_column(Enum(DocumentStatus), default=DocumentStatus.UPLOADED); extracted_text: Mapped[str|None]=mapped_column(Text, nullable=True); metadata_json: Mapped[dict]=mapped_column("metadata", JSON, default=dict); created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True), server_default=func.now())
 EmbeddingColumn=Vector(get_settings().embedding_dimensions).with_variant(JSON, "sqlite")

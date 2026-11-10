@@ -4,10 +4,12 @@ from .models.core import Role, Difficulty, RelationshipType
 class ORM(BaseModel): model_config=ConfigDict(from_attributes=True)
 class RegisterIn(BaseModel): name:str=Field(min_length=1,max_length=120); email:EmailStr; password:str=Field(min_length=8,max_length=128)
 class LoginIn(BaseModel): email:EmailStr; password:str
+class ProfileUpdateIn(BaseModel): name:str|None=Field(default=None,min_length=1,max_length=120); goal:str|None=Field(default=None,max_length=120); target_companies:list[str]|None=None; preferred_topics:list[str]|None=None
+class PasswordUpdateIn(BaseModel): current_password:str; new_password:str=Field(min_length=8,max_length=128)
 class TokenOut(BaseModel): access_token:str; refresh_token:str; token_type:str="bearer"
 class UserOut(ORM): id:int; name:str; email:EmailStr; role:Role
 class ConceptIn(BaseModel): name:str; category:str; description:str=""; difficulty:Difficulty=Difficulty.MEDIUM
-class RelationshipIn(BaseModel): target_concept_id:int; relationship_type:RelationshipType; weight:float=Field(default=1,ge=0,max=1)
+class RelationshipIn(BaseModel): target_concept_id:int; relationship_type:RelationshipType; weight:float=Field(default=1,ge=0,le=1)
 class SearchIn(BaseModel): query:str=Field(min_length=2,max_length=4000); top_k:int=Field(default=5,ge=1,le=20); topic:str|None=None
 class TutorIn(BaseModel): message:str=Field(min_length=1,max_length=8000); conversation_id:str|None=None; topic:str|None=None
 class HintIn(BaseModel): question_id:int; level:int=Field(ge=0,le=5)

@@ -9,6 +9,11 @@ __pycache__/
 # Environment variables
 .env
 
+# Local databases and uploaded files
+*.db
+uploads/
+data/generated/
+
 # Jupyter
 .ipynb_checkpoints/
 
@@ -28,3 +33,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Large generated synthetic dataset (keep local; too large for GitHub)
+APT_dataset/aptitude_Dataset.csv
