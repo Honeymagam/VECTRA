@@ -14,6 +14,8 @@ class SearchIn(BaseModel): query:str=Field(min_length=2,max_length=4000); top_k:
 class TutorIn(BaseModel): message:str=Field(min_length=1,max_length=8000); conversation_id:str|None=None; topic:str|None=None
 class HintIn(BaseModel): question_id:int; level:int=Field(ge=0,le=5)
 class QuestionIn(BaseModel): concept_id:int|None=None; question_text:str; options:list[str]=Field(min_length=2); correct_answer:str; explanation:str; difficulty:Difficulty=Difficulty.MEDIUM; company:str|None=None; question_type:str="QUANTITATIVE"
+class QuestionGenerateIn(BaseModel): concept_id:int; difficulty:Difficulty=Difficulty.MEDIUM; question_type:str="QUANTITATIVE"; company:str|None=None
+class ProfileUpdateIn(BaseModel): current_level:str|None=None; target_companies:list[str]|None=None; preferred_topics:list[str]|None=None
 class AnswerIn(BaseModel): question_id:int; selected_answer:str; solving_time_seconds:float=Field(ge=0,le=7200); hints_used:int=Field(default=0,ge=0,le=5); confidence_score:float=Field(default=.5,ge=0,le=1)
 class PracticeStartIn(BaseModel): topic:str|None=None
 class RevisionGenerateIn(BaseModel): scheduled_date:date|None=None
