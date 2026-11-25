@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
 import StatePanel from '@/components/ui/StatePanel';
 import { DEFAULT_ROUTE_PATH, ROUTES } from '@/config/routes';
@@ -54,8 +54,20 @@ const PAGE_OVERRIDES: Record<string, ReactElement> = {
 
 function App() {
   const { session, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
+    // Keep public routes interactive while a stored session is checked. A slow
+    // /auth/me response should not hide the landing navigation or sign-in form.
+    if (location.pathname === '/' || location.pathname === '/sign-in') {
+      return (
+        <Routes>
+          <Route index element={<LandingPage />} />
+          <Route path="/sign-in" element={<SignInPage />} />
+        </Routes>
+      );
+    }
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-6">
         <StatePanel variant="loading" title="Loading VECTRA" message="Checking your session." />
