@@ -1,6 +1,5 @@
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import LandingHeader from '@/components/landing/LandingHeader';
 
 const HERO_IMAGE_URL =
   'https://images.pexels.com/photos/5553049/pexels-photo-5553049.jpeg?auto=compress&cs=tinysrgb&h=650&w=940';
@@ -12,9 +11,7 @@ export default function HeroSection() {
     <section className="relative overflow-hidden bg-navy-900 text-white">
       <div className="pointer-events-none absolute -left-32 top-24 h-96 w-96 rounded-full bg-primary-600/25 blur-3xl" aria-hidden="true" />
       <div className="pointer-events-none absolute -right-24 bottom-0 h-80 w-80 rounded-full bg-success-500/15 blur-3xl" aria-hidden="true" />
-      <LandingHeader />
-
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-36 lg:grid-cols-2 lg:gap-16 lg:px-10 lg:pb-28 lg:pt-44">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-6 pb-20 pt-16 lg:grid-cols-2 lg:gap-16 lg:px-10 lg:pb-28 lg:pt-24">
         <div className="animate-fade-in">
           <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-navy-100">
             <span className="h-1.5 w-1.5 rounded-full bg-success-500" aria-hidden="true" />
