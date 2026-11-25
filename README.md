@@ -39,7 +39,7 @@ All protected routes use `Authorization: Bearer <access_token>`. Register/login 
 | Intelligence | `/api/revision/*`, `/api/readiness*`, `/api/analytics/*` |
 | Assessment | `/api/mock-tests`, `/{id}/start`, `/{id}/submit` |
 
-`POST /api/search` body: `{"query":"percent increase", "top_k":5, "topic":"Percentages"}`. Tutor responses return retrieved source metadata. The local deterministic embedding provider is intended for development/testing; production PostgreSQL deployments should configure a provider implementation and migrate vector columns to pgvector `vector` types matching its dimensionality.
+`POST /api/search` body: `{"query":"percent increase", "top_k":5, "topic":"Percentages"}`. Tutor responses return retrieved source metadata. Embeddings use the OpenAI-compatible NVIDIA endpoint by default: set `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL=https://integrate.api.nvidia.com/v1`, `EMBEDDING_MODEL=nvidia/nemotron-3.5-embed-1b`, and `EMBEDDING_DIMENSIONS=2048`. VECTRA exposes `POST /v1/embeddings` locally and sends `input_type` (`query` or `passage`) and `truncate` to the provider. PostgreSQL stores vectors as pgvector `halfvec(2048)` so the HNSW cosine indexes support the model's native dimension.
 
 ## Architecture
 

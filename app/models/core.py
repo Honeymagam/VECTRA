@@ -1,7 +1,8 @@
 import enum
+import uuid
 from datetime import datetime, date
-from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
-from pgvector.sqlalchemy import Vector
+from sqlalchemy import Boolean, Date, DateTime, Enum, Float, ForeignKey, Integer, JSON, String, Text, TypeDecorator, UniqueConstraint, func
+from pgvector.sqlalchemy import HALFVEC
 from ..config import get_settings
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from ..database import Base
@@ -21,7 +22,31 @@ class StudentProfile(Timestamped, Base):
     __tablename__="student_profiles"; id: Mapped[int]=mapped_column(primary_key=True); user_id: Mapped[int]=mapped_column(ForeignKey("users.id"), unique=True); current_level: Mapped[str]=mapped_column(String(30), default="MEDIUM"); goal: Mapped[str]=mapped_column(String(120), default="Get placed in a top company"); target_companies: Mapped[list]=mapped_column(JSON, default=list); preferred_topics: Mapped[list]=mapped_column(JSON, default=list); overall_mastery: Mapped[float]=mapped_column(Float, default=0)
 class Document(Base):
     __tablename__="documents"; id: Mapped[int]=mapped_column(primary_key=True); uploaded_by: Mapped[int]=mapped_column(ForeignKey("users.id"), index=True); filename: Mapped[str]=mapped_column(String(255)); file_type: Mapped[str]=mapped_column(String(20)); source_type: Mapped[str]=mapped_column(String(30), default="UPLOAD"); storage_path: Mapped[str|None]=mapped_column(String(512), nullable=True); status: Mapped[DocumentStatus]=mapped_column(Enum(DocumentStatus), default=DocumentStatus.UPLOADED); extracted_text: Mapped[str|None]=mapped_column(Text, nullable=True); metadata_json: Mapped[dict]=mapped_column("metadata", JSON, default=dict); created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True), server_default=func.now())
-EmbeddingColumn=Vector(get_settings().embedding_dimensions).with_variant(JSON, "sqlite")
+class TutorConversation(Timestamped, Base):
+    __tablename__="tutor_conversations"; id: Mapped[str]=mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4())); user_id: Mapped[int]=mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True); title: Mapped[str]=mapped_column(String(200))
+class TutorMessage(Base):
+    __tablename__="tutor_messages"; id: Mapped[int]=mapped_column(primary_key=True); conversation_id: Mapped[str]=mapped_column(ForeignKey("tutor_conversations.id", ondelete="CASCADE"), index=True); role: Mapped[str]=mapped_column(String(20)); content: Mapped[str]=mapped_column(Text); sources: Mapped[list]=mapped_column(JSON, default=list); created_at: Mapped[datetime]=mapped_column(DateTime(timezone=True), server_default=func.now())
+class EmbeddingVector(TypeDecorator):
+    impl = HALFVEC
+    cache_ok = True
+
+    def __init__(self, dimensions: int):
+        self.dimensions = dimensions
+        super().__init__()
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(JSON())
+        return dialect.type_descriptor(HALFVEC(self.dimensions))
+
+    def process_bind_param(self, value, dialect):
+        return value.to_list() if hasattr(value, "to_list") else value
+
+    def process_result_value(self, value, dialect):
+        return value.to_list() if hasattr(value, "to_list") else value
+
+
+EmbeddingColumn=EmbeddingVector(get_settings().embedding_dimensions)
 class DocumentChunk(Base):
     __tablename__="document_chunks"; id: Mapped[int]=mapped_column(primary_key=True); document_id: Mapped[int]=mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True); chunk_text: Mapped[str]=mapped_column(Text); topic: Mapped[str|None]=mapped_column(String(120), index=True); chunk_index: Mapped[int]=mapped_column(Integer); embedding: Mapped[list]=mapped_column(EmbeddingColumn, default=list); metadata_json: Mapped[dict]=mapped_column("metadata", JSON, default=dict); __table_args__=(UniqueConstraint("document_id","chunk_index"),)
 class Concept(Base):

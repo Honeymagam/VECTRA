@@ -15,7 +15,7 @@ def upgrade():
         op.execute('CREATE EXTENSION IF NOT EXISTS vector')
     Base.metadata.create_all(bind=bind)
     if bind.dialect.name=='postgresql':
-        op.execute('CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding_hnsw ON document_chunks USING hnsw (embedding vector_cosine_ops)')
-        op.execute('CREATE INDEX IF NOT EXISTS ix_concepts_embedding_hnsw ON concepts USING hnsw (embedding vector_cosine_ops)')
+        op.execute('CREATE INDEX IF NOT EXISTS ix_document_chunks_embedding_hnsw ON document_chunks USING hnsw (embedding halfvec_cosine_ops)')
+        op.execute('CREATE INDEX IF NOT EXISTS ix_concepts_embedding_hnsw ON concepts USING hnsw (embedding halfvec_cosine_ops)')
 def downgrade():
     Base.metadata.drop_all(bind=op.get_bind())

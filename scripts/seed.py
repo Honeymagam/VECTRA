@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.database import Base, SessionLocal, engine
 from app.models.core import Concept, Difficulty, Question, Role, User
 from app.services import embedder
+from app.config import get_settings
 from app.security import hash_password
 
 
@@ -47,6 +48,8 @@ def main() -> None:
                 concept = Concept(name=name, category=category, embedding=embedder.embed(name))
                 db.add(concept)
                 db.flush()
+            elif len(concept.embedding or []) != get_settings().embedding_dimensions or not any(concept.embedding or []):
+                concept.embedding = embedder.embed(name, input_type="passage")
             concepts[name] = concept
 
         added_questions = 0

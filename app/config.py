@@ -16,10 +16,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
     llm_fallback_model: str = ""
-    embedding_provider: str = "deterministic"
+    embedding_provider: str = "openai_compatible"
     embedding_api_key: str = ""
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 64
+    embedding_base_url: str = "https://integrate.api.nvidia.com/v1"
+    embedding_model: str = "nvidia/nemotron-3.5-embed-1b"
+    embedding_dimensions: int = 2048
     upload_dir: Path = Path("./uploads")
     max_upload_size_mb: int = 5120
     cors_origins: str = "http://localhost:3000"

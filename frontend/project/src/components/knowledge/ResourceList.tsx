@@ -27,6 +27,12 @@ const STATUS_STYLES: Record<ResourceStatus, { label: string; className: string }
 
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
 export default function ResourceList({ resources, deletingId, onDelete }: ResourceListProps) {
   return (
     <ul className="space-y-3">
@@ -54,6 +60,30 @@ export default function ResourceList({ resources, deletingId, onDelete }: Resour
               <p className="text-xs text-navy-400">
                 Added {DATE_FORMAT.format(new Date(resource.created_at))}
               </p>
+              {resource.status === 'processing' && resource.indexing_progress && (
+                <div className="max-w-2xl space-y-2 pt-1">
+                  <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-xs text-navy-600">
+                    <span>{resource.indexing_progress.records_processed.toLocaleString()} rows scanned · {resource.indexing_progress.chunks_created.toLocaleString()} chunks indexed{resource.indexing_progress.chunks_skipped ? ` · ${resource.indexing_progress.chunks_skipped.toLocaleString()} skipped` : ''}</span>
+                    <span>{resource.indexing_progress.percent.toFixed(2)}%</span>
+                  </div>
+                  <div
+                    role="progressbar"
+                    aria-label={`Indexing ${resource.title}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={resource.indexing_progress.percent}
+                    className="h-2 overflow-hidden rounded-full bg-neutral-100"
+                  >
+                    <div className="h-full rounded-full bg-primary-500 transition-[width] duration-500" style={{ width: `${Math.max(1, resource.indexing_progress.percent)}%` }} />
+                  </div>
+                  <p className="text-xs text-navy-400">
+                    {formatBytes(resource.indexing_progress.bytes_processed)} of {formatBytes(resource.indexing_progress.bytes_total)} read
+                  </p>
+                </div>
+              )}
+              {resource.status === 'failed' && resource.indexing_progress?.error && (
+                <p className="text-xs text-error-700">Indexing stopped: {resource.indexing_progress.error}</p>
+              )}
               {resource.notes && <p className="text-sm leading-relaxed text-navy-500">{resource.notes}</p>}
               {resource.source_url && (
                 <a

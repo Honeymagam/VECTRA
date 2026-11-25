@@ -26,6 +26,7 @@ import ReportsPage from '@/pages/ReportsPage';
 import SettingsPage from '@/pages/SettingsPage';
 import ProfilePage from '@/pages/ProfilePage';
 import DatasetReviewPage from '@/pages/DatasetReviewPage';
+import FormulasPage from '@/pages/FormulasPage';
 
 const PAGE_OVERRIDES: Record<string, ReactElement> = {
   [DEFAULT_ROUTE_PATH]: <DashboardPage />,
@@ -37,6 +38,7 @@ const PAGE_OVERRIDES: Record<string, ReactElement> = {
   '/concept-graph': <ConceptGraphPage />,
   '/vector-memory': <VectorMemoryPage />,
   '/dataset-review': <DatasetReviewPage />,
+  '/formulas': <FormulasPage />,
   '/reasoning-core': <ReasoningCorePage />,
   '/ai-tutor': <AITutorPage />,
   '/mistake-analysis': <MistakeAnalysisPage />,

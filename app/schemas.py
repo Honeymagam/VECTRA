@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from .models.core import Role, Difficulty, RelationshipType
 class ORM(BaseModel): model_config=ConfigDict(from_attributes=True)
@@ -11,7 +12,8 @@ class UserOut(ORM): id:int; name:str; email:EmailStr; role:Role
 class ConceptIn(BaseModel): name:str; category:str; description:str=""; difficulty:Difficulty=Difficulty.MEDIUM
 class RelationshipIn(BaseModel): target_concept_id:int; relationship_type:RelationshipType; weight:float=Field(default=1,ge=0,le=1)
 class SearchIn(BaseModel): query:str=Field(min_length=2,max_length=4000); top_k:int=Field(default=5,ge=1,le=20); topic:str|None=None
-class TutorIn(BaseModel): message:str=Field(min_length=1,max_length=8000); conversation_id:str|None=None; topic:str|None=None
+class EmbeddingIn(BaseModel): model:str; input:str|list[str]; input_type:Literal["query","passage"]; encoding_format:Literal["float"]="float"; truncate:Literal["NONE","END"]="END"
+class TutorIn(BaseModel): message:str=Field(min_length=1,max_length=8000); conversation_id:str|None=Field(default=None,max_length=36); topic:str|None=None
 class HintIn(BaseModel): question_id:int; level:int=Field(ge=0,le=5)
 class QuestionIn(BaseModel): concept_id:int|None=None; question_text:str; options:list[str]=Field(min_length=2); correct_answer:str; explanation:str; difficulty:Difficulty=Difficulty.MEDIUM; company:str|None=None; question_type:str="QUANTITATIVE"
 class QuestionGenerateIn(BaseModel): concept_id:int; difficulty:Difficulty=Difficulty.MEDIUM; question_type:str="QUANTITATIVE"; company:str|None=None

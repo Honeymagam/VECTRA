@@ -76,9 +76,7 @@ PDF/DOCX/TXT extraction and CSV conversion feed the same document chunk table. A
 
 ### Embeddings and search
 
-The current local embedding baseline is a deterministic hashed bag-of-words vector. Each lowercased whitespace-delimited token is SHA-256 hashed into one of 64 vector buckets; the vector is L2-normalized. Search embeds the query with the same function, loads eligible chunks, calculates cosine similarity, sorts them, and returns the top K matches. Student searches are constrained to their own documents; educator/admin queries can search shared resources.
-
-This is reproducible and avoids requiring an embedding service, but it is **not a semantic embedding model**: word order and context are not represented, and hash collisions can occur. The code also contains an OpenAI-compatible embedding adapter, but the current `.env` configuration uses `EMBEDDING_PROVIDER=deterministic`. Gemini is configured for text generation, not embeddings.
+The active embedding provider is NVIDIA Nemotron 3.5 Embed 1B. VECTRA marks document chunks as `passage` embeddings and learner queries as `query` embeddings, matching the model's retrieval modes. The provider returns 2048-dimensional vectors, stored in PostgreSQL as `halfvec(2048)` for cosine HNSW indexing. The deterministic provider remains available for offline development. Gemini is configured separately for text generation. Existing chunks must be re-embedded when the embedding model changes.
 
 ## 6. Tutor and reasoning models
 
@@ -174,7 +172,7 @@ Configuration is read from environment variables and `.env` using `app/config.py
 
 ## 12. Research limitations and next work
 
-1. **Embedding quality:** replace deterministic hashing with a documented semantic embedding model, set vector dimensionality consistently, and re-index all chunks when changing models.
+1. **Index maintenance:** provide an operational re-embedding workflow for existing document chunks when the embedding model changes.
 2. **Evaluation:** use a held-out, expert-reviewed test set; report retrieval Recall@K/Hit@K and answer correctness separately; include uncertainty intervals and failure analysis.
 3. **Question generation:** add generation provenance, formula verification, duplicate detection, and educator approval before questions become practice items.
 4. **Metric validity:** validate mastery/readiness weights against a longitudinal learner study before interpreting them as predictive.

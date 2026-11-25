@@ -1,6 +1,6 @@
 import csv, io, logging, random, shutil
 from contextlib import asynccontextmanager
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime, timezone
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -43,6 +43,19 @@ def health_live():return {'status':'ok'}
 def health_ready(db:Session=Depends(get_db)):
  db.execute(text('SELECT 1'))
  return {'status':'ok','database':'ok'}
+@app.post('/v1/embeddings',tags=['Embeddings'])
+def embeddings(data:EmbeddingIn):
+ if data.model != settings.embedding_model:
+  raise HTTPException(400,f"Configured embedding model is {settings.embedding_model}.")
+ values=[data.input] if isinstance(data.input,str) else data.input
+ if not values or any(not value.strip() for value in values):
+  raise HTTPException(422,'Input must contain at least one non-empty string.')
+ try:
+  vectors=embedder.embed_many(values,input_type=data.input_type,truncate=data.truncate)
+ except Exception as exc:
+  log.exception('Embedding provider request failed')
+  raise HTTPException(502,'The configured embedding provider could not create an embedding.') from exc
+ return {'object':'list','model':settings.embedding_model,'data':[{'object':'embedding','index':index,'embedding':vector} for index,vector in enumerate(vectors)]}
 def token_pair(user):
  s=get_settings();return TokenOut(access_token=create_token(str(user.id),'access',timedelta(minutes=s.access_token_expire_minutes)),refresh_token=create_token(str(user.id),'refresh',timedelta(days=s.refresh_token_expire_days)))
 
@@ -101,7 +114,7 @@ def upload(file:UploadFile=File(...),user:User=Depends(current_user),db:Session=
   limit_mb=upload_size_limit//(1024*1024)
   raise HTTPException(413,f'This file exceeds the {limit_mb} MB limit. Large datasets must be uploaded as CSV.')
  settings=get_settings();settings.upload_dir.mkdir(parents=True,exist_ok=True)
- doc=Document(uploaded_by=user.id,filename=file.filename,file_type=ext,status=DocumentStatus.UPLOADED);db.add(doc);db.commit();db.refresh(doc)
+ doc=Document(uploaded_by=user.id,filename=file.filename,file_type=ext,status=DocumentStatus.UPLOADED,metadata_json={'indexing':{'phase':'queued','percent':0.0,'bytes_processed':0,'bytes_total':size,'records_processed':0,'chunks_created':0,'chunks_skipped':0}});db.add(doc);db.commit();db.refresh(doc)
  path=settings.upload_dir/f'{doc.id}.{ext}'
  try:
   with path.open('wb') as destination:shutil.copyfileobj(file.file,destination,length=4*1024*1024)
@@ -112,11 +125,44 @@ def upload(file:UploadFile=File(...),user:User=Depends(current_user),db:Session=
   path.unlink(missing_ok=True)
   log.exception('Could not store or queue document %s',doc.id if doc else 'unknown')
   raise HTTPException(503,'The upload was received but could not be queued for indexing. Please try again later.')
- return {'id':doc.id,'status':doc.status,'filename':doc.filename,'file_type':doc.file_type,'created_at':doc.created_at,'chunk_count':0}
+ return {'id':doc.id,'status':doc.status,'filename':doc.filename,'file_type':doc.file_type,'created_at':doc.created_at,'chunk_count':0,'indexing_progress':doc.metadata_json.get('indexing')}
 @app.get('/api/documents',tags=['Documents'])
 def documents(user:User=Depends(current_user),db:Session=Depends(get_db)):
  docs=db.scalars(select(Document).where(Document.uploaded_by==user.id) if user.role==Role.STUDENT else select(Document)).all()
- return [{'id':doc.id,'uploaded_by':doc.uploaded_by,'filename':doc.filename,'file_type':doc.file_type,'source_type':doc.source_type,'status':doc.status,'created_at':doc.created_at,'chunk_count':db.scalar(select(func.count(DocumentChunk.id)).where(DocumentChunk.document_id==doc.id)) or 0} for doc in docs]
+ return [{'id':doc.id,'uploaded_by':doc.uploaded_by,'filename':doc.filename,'file_type':doc.file_type,'source_type':doc.source_type,'status':doc.status,'created_at':doc.created_at,'chunk_count':db.scalar(select(func.count(DocumentChunk.id)).where(DocumentChunk.document_id==doc.id)) or 0,'indexing_progress':(doc.metadata_json or {}).get('indexing')} for doc in docs]
+@app.get('/api/dataset-review',tags=['Dataset Review'])
+def dataset_review(document_id:int|None=None,user:User=Depends(current_user),db:Session=Depends(get_db)):
+ statement=select(Document).where(Document.file_type=='csv')
+ if user.role==Role.STUDENT:statement=statement.where(Document.uploaded_by==user.id)
+ if document_id is not None:statement=statement.where(Document.id==document_id)
+ document=db.scalars(statement.order_by(Document.created_at.desc())).first()
+ if document is None:return {'document':None,'summary':{'records_previewed':0,'records_scanned_for_formulas':0,'topic_count':0,'formula_count':0},'records':[],'formulas':[]}
+ path=get_settings().upload_dir/f'{document.id}.{document.file_type}'
+ if not path.is_file():raise HTTPException(404,'The uploaded CSV file is no longer available.')
+ file_size=path.stat().st_size
+ records=[];formulas=[];formula_keys=set();topics=set();records_scanned=0
+ with path.open('r',encoding='utf-8-sig',newline='') as source:
+  sample=source.read(8192);source.seek(0)
+  try:dialect=csv.Sniffer().sniff(sample,delimiters=',;\t|')
+  except csv.Error:dialect=csv.excel
+  reader=csv.DictReader(source,dialect=dialect)
+  for row_number,row in enumerate(reader,1):
+   normalized={str(key or '').strip().lstrip('\ufeff').casefold():str(value or '').strip() for key,value in row.items()}
+   def field(*names):return next((normalized[name] for name in names if normalized.get(name)), '')
+   topic=field('topic','concept','category') or 'Uncategorized'
+   formula=field('formula','rule','calculation')
+   topics.add(topic)
+   if row_number<=50:
+    records.append({'record_id':field('record_id','id') or str(row_number),'topic':topic,'difficulty':field('difficulty','level'),'source':field('source_values','source_data','source'),'question':field('question','prompt'),'formula':formula,'answer':field('correct_answer','answer'),'explanation':field('explanation','rationale')})
+   if row_number<=5000:
+    records_scanned=row_number
+    key=(topic.casefold(),formula.casefold())
+    if formula and key not in formula_keys:
+     formula_keys.add(key)
+     formulas.append({'topic':topic,'formula':formula,'formula_reference':field('formula_reference','source_url','reference'),'example':field('question','prompt'),'answer':field('correct_answer','answer'),'explanation':field('explanation','rationale')})
+   if row_number>=5000:break
+ summary={'records_previewed':len(records),'records_scanned_for_formulas':records_scanned,'topic_count':len(topics),'formula_count':len(formulas)}
+ return {'document':{'id':document.id,'filename':document.filename,'status':document.status,'file_size_bytes':file_size,'chunk_count':db.scalar(select(func.count(DocumentChunk.id)).where(DocumentChunk.document_id==document.id)) or 0,'indexing_progress':(document.metadata_json or {}).get('indexing')},'summary':summary,'records':records,'formulas':formulas}
 @app.get('/api/documents/{document_id}',tags=['Documents'])
 def document(document_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):
  d=db.get(Document,document_id)
@@ -134,7 +180,7 @@ def vector_search(data:SearchIn,user:User=Depends(current_user),db:Session=Depen
 @app.post('/api/concepts',tags=['Concepts'],status_code=201)
 def create_concept(data:ConceptIn,user:User=Depends(admin_user),db:Session=Depends(get_db)):
  if db.scalar(select(Concept).where(Concept.name==data.name)):raise HTTPException(409,'Concept already exists')
- c=Concept(**data.model_dump(),embedding=embedder.embed(data.name));db.add(c);db.commit();db.refresh(c);return c
+ c=Concept(**data.model_dump(),embedding=embedder.embed(data.name,input_type='passage'));db.add(c);db.commit();db.refresh(c);return c
 @app.get('/api/concepts',tags=['Concepts'])
 def concepts(user:User=Depends(current_user),db:Session=Depends(get_db)):return db.scalars(select(Concept)).all()
 @app.get('/api/concepts/{concept_id}',tags=['Concepts'])
@@ -153,10 +199,37 @@ def related(concept_id:int,user:User=Depends(current_user),db:Session=Depends(ge
 @app.get('/api/concepts/{concept_id}/prerequisites',tags=['Concepts'])
 def prerequisites(concept_id:int,user:User=Depends(current_user),db:Session=Depends(get_db)):return relations(concept_id,RelationshipType.PREREQUISITE,db)
 
+@app.get('/api/tutor/conversations',tags=['Tutor'])
+def tutor_conversations(user:User=Depends(current_user),db:Session=Depends(get_db)):
+ latest_message=select(TutorMessage.content).where(TutorMessage.conversation_id==TutorConversation.id).order_by(TutorMessage.id.desc()).limit(1).scalar_subquery()
+ rows=db.execute(select(TutorConversation,latest_message.label('preview')).where(TutorConversation.user_id==user.id).order_by(TutorConversation.updated_at.desc()).limit(50)).all()
+ return [{'id':conversation.id,'title':conversation.title,'updated_at':conversation.updated_at,'preview':preview or ''} for conversation,preview in rows]
+@app.get('/api/tutor/conversations/{conversation_id}',tags=['Tutor'])
+def tutor_conversation(conversation_id:str,user:User=Depends(current_user),db:Session=Depends(get_db)):
+ conversation=db.scalar(select(TutorConversation).where(TutorConversation.id==conversation_id,TutorConversation.user_id==user.id))
+ if not conversation:raise HTTPException(404,'Conversation not found')
+ messages=db.scalars(select(TutorMessage).where(TutorMessage.conversation_id==conversation.id).order_by(TutorMessage.id)).all()
+ return {'id':conversation.id,'title':conversation.title,'updated_at':conversation.updated_at,'messages':[{'id':message.id,'role':message.role,'content':message.content,'sources':message.sources or []} for message in messages]}
+def _start_tutor_conversation(data:TutorIn,user:User,db:Session):
+ if data.conversation_id:
+  conversation=db.scalar(select(TutorConversation).where(TutorConversation.id==data.conversation_id,TutorConversation.user_id==user.id))
+  if not conversation:raise HTTPException(404,'Conversation not found')
+ else:
+  title=data.message.strip().splitlines()[0][:197]
+  if len(data.message.strip().splitlines()[0])>197:title+='…'
+  conversation=TutorConversation(user_id=user.id,title=title or 'New conversation');db.add(conversation);db.flush()
+ db.add(TutorMessage(conversation_id=conversation.id,role='user',content=data.message,sources=[]))
+ conversation.updated_at=datetime.now(timezone.utc)
+ db.commit()
+ return conversation
 @app.post('/api/tutor/chat',tags=['Tutor'])
 def chat(data:TutorIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
+ conversation=_start_tutor_conversation(data,user,db)
  sources=search(db,data.message,5,data.topic,user.id if user.role==Role.STUDENT else None); concepts=[s['topic'] for s in sources if s['topic']]
- if not sources:return {'answer':'I do not have retrieved course material for this yet. Try uploading approved learning resources or ask for guided practice.','sources':[],'concepts':[],'recommended_action':'Upload or select learning material.','confidence':0.0}
+ if not sources:
+  answer='I do not have retrieved course material for this yet. Try uploading approved learning resources or ask for guided practice.'
+  db.add(TutorMessage(conversation_id=conversation.id,role='assistant',content=answer,sources=[]));conversation.updated_at=datetime.now(timezone.utc);db.commit()
+  return {'conversation_id':conversation.id,'answer':answer,'sources':[],'concepts':[],'recommended_action':'Upload or select learning material.','confidence':0.0}
  context='\n\n'.join(s['chunk'][:700] for s in sources); state=''
  if concepts:
   c=db.scalar(select(Concept).where(Concept.name==concepts[0])); ls=c and db.scalar(select(LearningState).where(LearningState.user_id==user.id,LearningState.concept_id==c.id)); state=f' Your current mastery is {ls.mastery_score:.0f}/100.' if ls else ''
@@ -168,7 +241,8 @@ def chat(data:TutorIn,user:User=Depends(current_user),db:Session=Depends(get_db)
  except Exception:
   log.exception('Tutor answer generation failed')
   raise HTTPException(503,'The AI tutor is temporarily unavailable. Check the Gemini API configuration and try again.')
- return {'answer':answer,'sources':sources,'concepts':list(dict.fromkeys(concepts)),'recommended_action':'Attempt one guided practice question.','confidence':round(max(s['similarity'] for s in sources),2)}
+ db.add(TutorMessage(conversation_id=conversation.id,role='assistant',content=answer,sources=sources));conversation.updated_at=datetime.now(timezone.utc);db.commit()
+ return {'conversation_id':conversation.id,'answer':answer,'sources':sources,'concepts':list(dict.fromkeys(concepts)),'recommended_action':'Attempt one guided practice question.','confidence':round(max(s['similarity'] for s in sources),2)}
 @app.post('/api/tutor/hint',tags=['Tutor'])
 def hint(data:HintIn,user:User=Depends(current_user),db:Session=Depends(get_db)):
  q=db.get(Question,data.question_id)

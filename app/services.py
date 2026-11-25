@@ -2,8 +2,8 @@ from datetime import datetime, date
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .models.core import *
-from .ai import DeterministicEmbeddingProvider, cosine
-embedder=DeterministicEmbeddingProvider()
+from .ai import get_embedding_provider, cosine
+embedder=get_embedding_provider()
 def chunks(text,size=900,overlap=120):
  words=text.split(); step=max(1,size-overlap)
  return [" ".join(words[i:i+size]) for i in range(0,len(words),step)] or [text]
@@ -18,11 +18,11 @@ def process_document(db:Session, document:Document, text:str):
  except Exception:
   document.status=DocumentStatus.FAILED; db.commit(); raise
 def search(db:Session, query:str, top_k:int, topic:str|None=None, user_id:int|None=None):
- q=embedder.embed(query); statement=select(DocumentChunk)
+ q=embedder.embed(query,input_type="query"); statement=select(DocumentChunk)
  if user_id is not None:statement=statement.join(Document).where(Document.uploaded_by==user_id)
  if topic is not None:statement=statement.where(DocumentChunk.topic==topic)
  rows=db.scalars(statement).all()
- ranked=sorted(((cosine(q,x.embedding),x) for x in rows if x.embedding is not None and len(x.embedding)>0),reverse=True,key=lambda x:x[0])[:top_k]
+ ranked=sorted(((cosine(q,x.embedding),x) for x in rows if x.embedding is not None and len(x.embedding)==len(q) and any(x.embedding)),reverse=True,key=lambda x:x[0])[:top_k]
  return [{"chunk_id":c.id,"chunk":c.chunk_text,"document_id":c.document_id,"document_name":db.get(Document,c.document_id).filename,"similarity":round(score,4),"topic":c.topic,"page":c.metadata_json.get("page")} for score,c in ranked]
 def update_learning_state(db:Session, attempt:QuestionAttempt, question:Question):
  if not question.concept_id:return None
