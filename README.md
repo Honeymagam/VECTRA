@@ -13,6 +13,20 @@ Open the app at `http://localhost:8080`. The API is served through `/api`; its l
 
 ## Deploy
 
+### Deploy the frontend to Vercel
+
+Vercel hosts the Vite frontend. The FastAPI backend, PostgreSQL database, Redis queue, Celery indexing worker, and persistent upload storage must run on a separate host. The Docker Compose deployment below runs those services together. A frontend-only Vercel deployment will build and display the site, but API-backed features will not work until it can reach a deployed backend.
+
+1. Import the `Honeymagam/VECTRA` GitHub repository into Vercel.
+2. Set **Root Directory** to `frontend/project` and keep the framework preset as **Vite**.
+3. Use `npm run build` as the build command and `dist` as the output directory. Vercel's SPA routing configuration is in `frontend/project/vercel.json`.
+4. In the Vercel project settings, add `VITE_API_BASE_URL` for the Production and Preview environments. Set it to the public backend URL ending in `/api`, for example `https://api.example.com/api`, then redeploy. Do not put provider or database secrets in `VITE_` variables; those are included in the browser bundle.
+5. Configure the backend's `CORS_ORIGINS` to include the Vercel production domain and any preview domains that need access.
+
+The backend needs durable PostgreSQL storage with pgvector, Redis, a running Celery worker, and persistent storage for uploaded files. Keep large dataset uploads and indexing on that backend deployment; Vercel is serving the frontend only. The Vercel project should use `frontend/project` as its root so it does not try to build the Docker Compose stack.
+
+### Deploy the full stack with Docker Compose
+
 The Compose stack builds a static frontend image, applies Alembic migrations, and seeds the initial concepts and nine starter questions before the API starts. PostgreSQL data and uploaded-resource storage use persistent Docker volumes. Health checks gate the frontend on database and API readiness. Seeding is safe to repeat and does not overwrite user data.
 
 ```powershell
