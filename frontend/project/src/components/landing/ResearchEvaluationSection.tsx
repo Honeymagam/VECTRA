@@ -1,4 +1,6 @@
 import { Activity, BookCheck, ChartNoAxesCombined, Database, SearchCheck, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { fetchLatestModelEvaluation } from '@/services/modelEvaluation';
 
 const METRICS = [
   {
@@ -40,6 +42,16 @@ const METRICS = [
 ];
 
 export default function ResearchEvaluationSection() {
+  const [report, setReport] = useState<Awaited<ReturnType<typeof fetchLatestModelEvaluation>>['report']>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchLatestModelEvaluation()
+      .then((result) => { if (!cancelled) setReport(result.report); })
+      .catch(() => { if (!cancelled) setReport(null); });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <section id="research-evaluation" className="bg-navy-900 py-20 text-white lg:py-28">
       <div className="mx-auto max-w-6xl px-6 lg:px-10">
@@ -47,7 +59,7 @@ export default function ResearchEvaluationSection() {
           <p className="text-sm font-semibold uppercase tracking-wider text-primary-300">Research transparency</p>
           <h2 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">Model evaluation and paper metrics</h2>
           <p className="mt-4 text-sm leading-relaxed text-navy-200 sm:text-base">
-            The current tutor has been measured on a small held-out synthetic arithmetic benchmark. These are diagnostic baseline results, not expert-validated or publication-ready model claims. Learner practice accuracy measures students' answers; it is not model accuracy.
+            VECTRA separates embedding retrieval quality from tutor answer accuracy. Scores come from the latest held-out benchmark report; missing metrics are shown as not measured, never as zero.
           </p>
         </div>
 
@@ -55,24 +67,30 @@ export default function ResearchEvaluationSection() {
           <div className="flex items-start gap-3">
             <ChartNoAxesCombined className="mt-0.5 h-5 w-5 flex-shrink-0 text-accent-300" aria-hidden="true" />
             <div>
-              <h3 className="font-semibold">End-to-end exact-answer accuracy</h3>
-              <p className="mt-1 text-sm text-navy-200">0.00% · 0 correct final answers out of 100 prompts. The 95% Wilson interval is 0.00%–3.70%.</p>
+              <h3 className="font-semibold">Tutor numeric answer accuracy</h3>
+              {report?.answer_accuracy ? (
+                <p className="mt-1 text-sm text-navy-200">{report.answer_accuracy.percentage.toFixed(2)}% · {report.answer_accuracy.numerator} exact numeric matches out of {report.answer_accuracy.denominator} prompts. 95% Wilson interval: {report.answer_accuracy.confidence_95_percent.lower.toFixed(2)}%–{report.answer_accuracy.confidence_95_percent.upper.toFixed(2)}%.</p>
+              ) : (
+                <p className="mt-1 text-sm text-navy-200">Not measured in the latest run. Run the optional tutor benchmark to score numeric answers; this is not a 0% result.</p>
+              )}
             </div>
           </div>
           <span className="w-fit flex-shrink-0 rounded-full border border-warning-300/30 bg-warning-300/10 px-3 py-1 text-xs font-semibold text-warning-200">Synthetic diagnostic</span>
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
-          <h3 className="font-semibold">Retrieval Hit@5</h3>
-          <p className="mt-1 text-sm text-navy-200">100.00% · the expected topic formula appeared in the top five retrieved passages for 100 of 100 prompts.</p>
-          <p className="mt-2 text-xs leading-relaxed text-navy-300">Benchmark scope: 100 held-out synthetic arithmetic questions across 9 topics. Expected answers were not included in the formula-only knowledge base. Exact-answer scoring excludes retrieved passages and checks the tutor's own final response. The current tutor uses retrieval and template logic; no answer-generating LLM is configured.</p>
+          <h3 className="font-semibold">Embedding retrieval quality</h3>
+          {report ? (
+            <>
+              <p className="mt-1 text-sm text-navy-200">Hit@5: {report.retrieval.hit_at_5_percent.toFixed(2)}% ({report.retrieval.numerator}/{report.retrieval.denominator}); Precision@5: {report.retrieval.precision_at_5_percent.toFixed(2)}%; MRR@5: {report.retrieval.mrr_at_5_percent.toFixed(2)}%; nDCG@5: {report.retrieval.ndcg_at_5_percent.toFixed(2)}%.</p>
+              <p className="mt-2 text-xs leading-relaxed text-navy-300">Embedding model: {report.embedding_model}. Benchmark scope: {report.sample_size} held-out synthetic queries across {report.topic_count} topics. One formula passage is labeled relevant for each query, so Hit@5 and Recall@5 are equal; Precision@5 divides the single relevant result by five.</p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-navy-200">No benchmark report is available yet. Run the retrieval evaluation to publish measured results here.</p>
+          )}
         </div>
 
-        <div className="mt-4 rounded-2xl border border-error-300/20 bg-error-300/5 p-5 sm:p-6">
-          <h3 className="font-semibold">Real-textbook pilot</h3>
-          <p className="mt-1 text-sm text-navy-200">Expected-answer passage retrieved at Hit@5: 0.00% (0/5). The expected answer was absent from all five tutor responses. The indexed textbook contains 930 chunks.</p>
-          <p className="mt-2 text-xs leading-relaxed text-navy-300">This is a five-question diagnostic pilot on one textbook, not a representative or expert-validated benchmark. It shows the current retrieval and response path did not surface the answer passages for these prompts.</p>
-        </div>
+        <p className="mt-3 text-xs leading-relaxed text-navy-300">Results are synthetic diagnostics, not expert-reviewed general-purpose model scores. Learner practice accuracy is a separate student metric.</p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {METRICS.map(({ group, icon: Icon, items }) => (

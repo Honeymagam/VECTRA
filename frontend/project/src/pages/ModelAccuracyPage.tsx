@@ -2,45 +2,9 @@ import { useEffect, useState } from 'react';
 import { BrainCircuit, ChartNoAxesCombined, Target } from 'lucide-react';
 import PageHeader from '@/components/ui/PageHeader';
 import StatePanel from '@/components/ui/StatePanel';
-import { api } from '@/lib/api';
+import { fetchLatestModelEvaluation, type ModelEvaluationReport } from '@/services/modelEvaluation';
 
-interface MetricReport {
-  evaluated_at: string;
-  benchmark: string;
-  sample_size: number;
-  topic_count: number;
-  embedding_model: string;
-  tutor_model: string | null;
-  answer_accuracy: {
-    label: string;
-    percentage: number;
-    numerator: number;
-    denominator: number;
-    confidence_95_percent: { lower: number; upper: number };
-  } | null;
-  retrieval: {
-    hit_at_5_percent: number;
-    precision_at_5_percent: number;
-    recall_at_5_percent: number;
-    mrr_at_5_percent: number;
-    ndcg_at_5_percent: number;
-  };
-  per_topic: Record<string, {
-    questions: number;
-    answer_accuracy_percent: number | null;
-    retrieval_hit_at_5_percent: number;
-    mrr_at_5_percent: number;
-  }>;
-  limitations: string[];
-}
-
-interface EvaluationResponse {
-  embedding_model: string;
-  tutor_model: string;
-  report: MetricReport | null;
-}
-
-type ViewState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; data: EvaluationResponse };
+type ViewState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; data: Awaited<ReturnType<typeof fetchLatestModelEvaluation>> };
 
 function PercentCard({ label, value, detail, icon: Icon }: { label: string; value: number; detail: string; icon: typeof Target }) {
   return (
@@ -67,13 +31,13 @@ export default function ModelAccuracyPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api<EvaluationResponse>('/model-evaluation/latest')
+    fetchLatestModelEvaluation()
       .then((data) => { if (!cancelled) setView({ kind: 'ready', data }); })
       .catch(() => { if (!cancelled) setView({ kind: 'error' }); });
     return () => { cancelled = true; };
   }, []);
 
-  const report = view.kind === 'ready' ? view.data.report : null;
+  const report: ModelEvaluationReport | null = view.kind === 'ready' ? view.data.report : null;
 
   return (
     <>

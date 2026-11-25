@@ -58,7 +58,7 @@ def embeddings(data:EmbeddingIn):
   raise HTTPException(502,'The configured embedding provider could not create an embedding.') from exc
  return {'object':'list','model':settings.embedding_model,'data':[{'object':'embedding','index':index,'embedding':vector} for index,vector in enumerate(vectors)]}
 @app.get('/api/model-evaluation/latest',tags=['Model Evaluation'])
-def latest_model_evaluation(_user:User=Depends(current_user)):
+def latest_model_evaluation():
  report_path=Path(__file__).resolve().parents[1]/'data'/'generated'/'model_evaluation_latest.json'
  report=None
  if report_path.is_file():
