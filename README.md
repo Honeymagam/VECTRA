@@ -55,6 +55,18 @@ All protected routes use `Authorization: Bearer <access_token>`. Register/login 
 
 `POST /api/search` body: `{"query":"percent increase", "top_k":5, "topic":"Percentages"}`. Tutor responses return retrieved source metadata. Embeddings use the OpenAI-compatible NVIDIA endpoint by default: set `EMBEDDING_API_KEY`, `EMBEDDING_BASE_URL=https://integrate.api.nvidia.com/v1`, `EMBEDDING_MODEL=nvidia/nemotron-3.5-embed-1b`, and `EMBEDDING_DIMENSIONS=2048`. VECTRA exposes `POST /v1/embeddings` locally and sends `input_type` (`query` or `passage`) and `truncate` to the provider. PostgreSQL stores vectors as pgvector `halfvec(2048)` so the HNSW cosine indexes support the model's native dimension.
 
+## Model accuracy and retrieval evaluation
+
+The signed-in **Model Accuracy** page shows the latest measured benchmark report; it does not display placeholder scores. Run the held-out embedding retrieval evaluation from the project root with the configured embedding provider credentials:
+
+```bash
+python scripts/evaluate_tutor_benchmark.py
+```
+
+The default run sends 100 retrieval queries to the configured embedding provider and writes `data/generated/model_evaluation_latest.json`. The API reads this file, and Docker Compose mounts it into the backend so the page can show the report. Provider usage may incur charges. To additionally measure tutor numeric exact-match accuracy, run `python scripts/evaluate_tutor_benchmark.py --include-tutor`; this makes 100 chat requests to the configured tutor model.
+
+The report measures embedding retrieval with Hit@5, Precision@5, MRR@5, and nDCG@5; with `--include-tutor`, it also measures numeric exact-match answer accuracy and its 95% Wilson interval. The page shows per-topic percentages. The questions are synthetic and each has one relevant formula passage, so these are diagnostic measurements, not expert-reviewed or general-purpose model scores. Numeric matching does not assess explanation quality or factuality.
+
 ## Architecture
 
 ```mermaid

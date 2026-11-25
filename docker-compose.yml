@@ -12,7 +12,9 @@ services:
       MAX_UPLOAD_SIZE_MB: ${MAX_UPLOAD_SIZE_MB:-5120}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
-    volumes: ["uploads:/data/uploads"]
+    volumes:
+      - uploads:/data/uploads
+      - ./data/generated:/app/data/generated:ro
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}

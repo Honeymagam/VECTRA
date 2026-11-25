@@ -1,6 +1,7 @@
-import csv, io, logging, random, shutil
+import csv, io, json, logging, random, shutil
 from contextlib import asynccontextmanager
 from datetime import timedelta, date, datetime, timezone
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -56,6 +57,16 @@ def embeddings(data:EmbeddingIn):
   log.exception('Embedding provider request failed')
   raise HTTPException(502,'The configured embedding provider could not create an embedding.') from exc
  return {'object':'list','model':settings.embedding_model,'data':[{'object':'embedding','index':index,'embedding':vector} for index,vector in enumerate(vectors)]}
+@app.get('/api/model-evaluation/latest',tags=['Model Evaluation'])
+def latest_model_evaluation(_user:User=Depends(current_user)):
+ report_path=Path(__file__).resolve().parents[1]/'data'/'generated'/'model_evaluation_latest.json'
+ report=None
+ if report_path.is_file():
+  try:report=json.loads(report_path.read_text(encoding='utf-8'))
+  except (OSError,json.JSONDecodeError):
+   log.exception('Could not read model evaluation report')
+   raise HTTPException(500,'The latest model evaluation report could not be read.')
+ return {'embedding_model':settings.embedding_model,'tutor_model':settings.llm_model if settings.llm_provider.lower() in {'openai','openai_compatible'} else settings.llm_provider,'report':report}
 def token_pair(user):
  s=get_settings();return TokenOut(access_token=create_token(str(user.id),'access',timedelta(minutes=s.access_token_expire_minutes)),refresh_token=create_token(str(user.id),'refresh',timedelta(days=s.refresh_token_expire_days)))
 

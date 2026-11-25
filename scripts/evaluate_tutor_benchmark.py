@@ -1,12 +1,14 @@
-"""Run a small isolated, held-out arithmetic QA benchmark against VECTRA Tutor.
+"""Measure held-out synthetic formula retrieval, optionally including tutor QA.
 
-This measures the current tutor handler, not the synthetic-data generator. It
-creates a temporary SQLite corpus containing formulas only (no benchmark
-answers), sends novel numerical questions through the app, and reports exact
-answer accuracy separately from retrieval Hit@5. Results are diagnostic, not a
-publication-ready expert-labelled benchmark.
+The default run measures embedding retrieval only. Pass --include-tutor to make
+100 tutor requests and also report numeric exact-match answer accuracy. Results
+are diagnostic, not a publication-ready expert-labelled benchmark.
 """
 from decimal import Decimal
+from datetime import datetime, timezone
+import argparse
+import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -23,10 +25,11 @@ os.environ["DATABASE_URL"] = f"sqlite:///{database_path}"
 os.environ["ENVIRONMENT"] = "development"
 
 from app.database import Base, SessionLocal, engine
+from app.config import get_settings
 from app.main import chat
 from app.models.core import Concept, Document, DocumentChunk, Role, User
 from app.schemas import TutorIn
-from app.services import embedder
+from app.services import embedder, search
 
 
 FORMULAS = {
@@ -115,9 +118,14 @@ def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float,
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Measure VECTRA tutor and embedding retrieval quality.")
+    parser.add_argument("--include-tutor", action="store_true", help="also run 100 tutor prompts and measure numeric exact-match accuracy")
+    args = parser.parse_args()
+    include_tutor = args.include_tutor
     total = exact_matches = retrieval_hits = 0
-    per_topic: dict[str, list[int]] = {}
-    exact_match_cases = []
+    answer_total = 0
+    reciprocal_rank_sum = precision_at_5_sum = ndcg_at_5_sum = 0.0
+    per_topic: dict[str, dict[str, float]] = {}
     try:
         Base.metadata.create_all(engine)
         db = SessionLocal()
@@ -147,36 +155,103 @@ def main() -> None:
             db.refresh(user)
 
             for topic, prompt, expected in benchmark_cases():
-                payload = chat(TutorIn(message=f"Topic: {topic}. {prompt}"), user, db)
-                answer = payload.get("answer", "")
                 total += 1
-                # Ignore retrieved formula passages: only score the tutor's own
-                # final response text, so matching a number in source material
-                # cannot count as the system solving the held-out problem.
-                final_text = answer.rsplit("Work through the key idea", 1)[-1]
-                matched = expected in normalize_numeric_values(final_text)
-                exact_matches += int(matched)
-                topic_hit = any(source.get("topic") == topic for source in payload.get("sources", []))
+                query = f"Topic: {topic}. {prompt}"
+                if include_tutor:
+                    payload = chat(TutorIn(message=query), user, db)
+                    answer = payload.get("answer", "")
+                    # Ignore retrieved passages: score only the tutor's own final response.
+                    final_text = answer.rsplit("Work through the key idea", 1)[-1]
+                    matched = expected in normalize_numeric_values(final_text)
+                    exact_matches += int(matched)
+                    answer_total += 1
+                    sources = payload.get("sources", [])
+                else:
+                    sources = search(db, query, 5)
+                relevant_rank = next((rank for rank, source in enumerate(sources[:5], start=1) if source.get("topic") == topic), None)
+                topic_hit = relevant_rank is not None
                 retrieval_hits += int(topic_hit)
-                stats = per_topic.setdefault(topic, [0, 0, 0])
-                stats[0] += 1
-                stats[1] += int(matched)
-                stats[2] += int(topic_hit)
+                reciprocal_rank = 1 / relevant_rank if relevant_rank else 0.0
+                ndcg = 1 / math.log2(relevant_rank + 1) if relevant_rank else 0.0
+                precision = 1 / 5 if topic_hit else 0.0
+                reciprocal_rank_sum += reciprocal_rank
+                ndcg_at_5_sum += ndcg
+                precision_at_5_sum += precision
+                stats = per_topic.setdefault(topic, {"questions": 0, "exact_matches": 0, "answer_count": 0, "retrieval_hits": 0, "reciprocal_rank_sum": 0.0})
+                stats["questions"] += 1
+                if include_tutor:
+                    stats["exact_matches"] += int(matched)
+                    stats["answer_count"] += 1
+                stats["retrieval_hits"] += int(topic_hit)
+                stats["reciprocal_rank_sum"] += reciprocal_rank
                 if total % 10 == 0:
                     print(f"Evaluated {total}/100 prompts", flush=True)
         finally:
             db.close()
 
-        lower, upper = wilson_interval(exact_matches, total)
-        print("VECTRA Tutor held-out synthetic arithmetic benchmark")
+        lower, upper = wilson_interval(exact_matches, answer_total) if answer_total else (None, None)
+        settings = get_settings()
+        report = {
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+            "benchmark": "held-out synthetic arithmetic QA and formula retrieval" if include_tutor else "held-out synthetic formula retrieval",
+            "sample_size": total,
+            "topic_count": len(per_topic),
+            "embedding_model": settings.embedding_model,
+            "tutor_model": (settings.llm_model if settings.llm_provider.lower() in {"openai", "openai_compatible"} else settings.llm_provider) if include_tutor else None,
+            "answer_accuracy": {
+                "label": "Numeric exact-match accuracy",
+                "percentage": round(exact_matches / answer_total * 100, 2) if answer_total else 0,
+                "numerator": exact_matches,
+                "denominator": answer_total,
+                "confidence_95_percent": {"lower": round(lower, 2), "upper": round(upper, 2)},
+            } if answer_total else None,
+            "retrieval": {
+                "hit_at_5_percent": round(retrieval_hits / total * 100, 2) if total else 0,
+                "precision_at_5_percent": round(precision_at_5_sum / total * 100, 2) if total else 0,
+                "recall_at_5_percent": round(retrieval_hits / total * 100, 2) if total else 0,
+                "mrr_at_5_percent": round(reciprocal_rank_sum / total * 100, 2) if total else 0,
+                "ndcg_at_5_percent": round(ndcg_at_5_sum / total * 100, 2) if total else 0,
+                "numerator": retrieval_hits,
+                "denominator": total,
+            },
+            "per_topic": {
+                topic: {
+                    "questions": int(stats["questions"]),
+                    "answer_accuracy_percent": round(stats["exact_matches"] / stats["answer_count"] * 100, 2) if stats["answer_count"] else None,
+                    "retrieval_hit_at_5_percent": round(stats["retrieval_hits"] / stats["questions"] * 100, 2),
+                    "mrr_at_5_percent": round(stats["reciprocal_rank_sum"] / stats["questions"] * 100, 2),
+                }
+                for topic, stats in per_topic.items()
+            },
+            "limitations": [
+                "Synthetic arithmetic questions with one formula passage per topic.",
+                "Numeric exact match does not measure explanation quality or factuality; it is only run with --include-tutor.",
+                "Diagnostic result only; it is not an expert-reviewed or general-purpose model score.",
+            ],
+        }
+        report_path = WORKSPACE / "data" / "generated" / "model_evaluation_latest.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print("VECTRA held-out synthetic formula retrieval benchmark")
         print(f"Questions: {total}")
-        print(f"End-to-end exact-answer accuracy: {exact_matches / total * 100:.2f}% ({exact_matches}/{total})")
-        print(f"95% Wilson interval: {lower:.2f}% to {upper:.2f}%")
+        print(f"Embedding model: {report['embedding_model']}")
+        if include_tutor:
+            print(f"Tutor model: {report['tutor_model']}")
+            print(f"End-to-end exact-answer accuracy: {exact_matches / answer_total * 100:.2f}% ({exact_matches}/{answer_total})")
+            print(f"95% Wilson interval: {lower:.2f}% to {upper:.2f}%")
+        else:
+            print("Tutor answer accuracy: not run (use --include-tutor to measure)")
         print(f"Topic retrieval Hit@5: {retrieval_hits / total * 100:.2f}% ({retrieval_hits}/{total})")
-        print("Per topic (exact accuracy; retrieval Hit@5):")
-        for topic, (count, correct, hits) in per_topic.items():
-            print(f"  {topic}: {correct / count * 100:.1f}%; {hits / count * 100:.1f}% ({count} questions)")
-        print("Limitations: synthetic arithmetic benchmark, single deterministic embedding setup, no expert review, no LLM generation. Diagnostic result only; not a publication-ready score.")
+        print(f"Precision@5: {precision_at_5_sum / total * 100:.2f}%")
+        print(f"MRR@5: {reciprocal_rank_sum / total * 100:.2f}%")
+        print(f"nDCG@5: {ndcg_at_5_sum / total * 100:.2f}%")
+        print("Per topic (answer accuracy; retrieval Hit@5):")
+        for topic, stats in per_topic.items():
+            count = int(stats["questions"])
+            answer_score = f"{stats['exact_matches'] / stats['answer_count'] * 100:.1f}%" if stats["answer_count"] else "not run"
+            print(f"  {topic}: {answer_score}; {stats['retrieval_hits'] / count * 100:.1f}% ({count} questions)")
+        print(f"Saved report: {report_path}")
+        print("Limitations: synthetic arithmetic benchmark, one relevant formula passage per topic, and numeric exact-match does not rate explanation quality. Diagnostic only; not an expert-reviewed general-purpose model score.")
     finally:
         engine.dispose()
         TEMP_DIR.cleanup()

@@ -27,6 +27,7 @@ import SettingsPage from '@/pages/SettingsPage';
 import ProfilePage from '@/pages/ProfilePage';
 import DatasetReviewPage from '@/pages/DatasetReviewPage';
 import FormulasPage from '@/pages/FormulasPage';
+import ModelAccuracyPage from '@/pages/ModelAccuracyPage';
 
 const PAGE_OVERRIDES: Record<string, ReactElement> = {
   [DEFAULT_ROUTE_PATH]: <DashboardPage />,
@@ -46,6 +47,7 @@ const PAGE_OVERRIDES: Record<string, ReactElement> = {
   '/revision': <RevisionPage />,
   '/analytics': <AnalyticsPage />,
   '/reports': <ReportsPage />,
+  '/model-accuracy': <ModelAccuracyPage />,
   '/settings': <SettingsPage />,
   '/profile': <ProfilePage />,
 };

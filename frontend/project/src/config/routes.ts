@@ -182,6 +182,13 @@ export const NAV_SECTIONS: NavSection[] = [
         description: 'Performance summaries, assessment reports and exports.',
         icon: FileBarChart,
       },
+      {
+        path: '/model-accuracy',
+        label: 'Model Accuracy',
+        title: 'Model Accuracy',
+        description: 'Measured tutor answer accuracy and embedding retrieval quality from the latest benchmark run.',
+        icon: Gauge,
+      },
     ],
   },
   {
