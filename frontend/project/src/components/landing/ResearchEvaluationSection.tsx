@@ -53,7 +53,7 @@ export default function ResearchEvaluationSection() {
   }, []);
 
   const realReport = evaluation?.real_data_report ?? null;
-  const answerReport = realReport?.answer_accuracy ? realReport : evaluation?.report ?? null;
+  const answerReport = realReport ?? evaluation?.report ?? null;
   const retrievalReport = realReport ?? evaluation?.report ?? null;
 
   return (
