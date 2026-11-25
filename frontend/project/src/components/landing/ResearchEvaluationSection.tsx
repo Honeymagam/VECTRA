@@ -42,15 +42,19 @@ const METRICS = [
 ];
 
 export default function ResearchEvaluationSection() {
-  const [report, setReport] = useState<Awaited<ReturnType<typeof fetchLatestModelEvaluation>>['report']>(null);
+  const [evaluation, setEvaluation] = useState<Awaited<ReturnType<typeof fetchLatestModelEvaluation>> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetchLatestModelEvaluation()
-      .then((result) => { if (!cancelled) setReport(result.report); })
-      .catch(() => { if (!cancelled) setReport(null); });
+      .then((result) => { if (!cancelled) setEvaluation(result); })
+      .catch(() => { if (!cancelled) setEvaluation(null); });
     return () => { cancelled = true; };
   }, []);
+
+  const realReport = evaluation?.real_data_report ?? null;
+  const answerReport = realReport?.answer_accuracy ? realReport : evaluation?.report ?? null;
+  const retrievalReport = realReport ?? evaluation?.report ?? null;
 
   return (
     <section id="research-evaluation" className="bg-navy-900 py-20 text-white lg:py-28">
@@ -68,29 +72,29 @@ export default function ResearchEvaluationSection() {
             <ChartNoAxesCombined className="mt-0.5 h-5 w-5 flex-shrink-0 text-accent-300" aria-hidden="true" />
             <div>
               <h3 className="font-semibold">Tutor numeric answer accuracy</h3>
-              {report?.answer_accuracy ? (
-                <p className="mt-1 text-sm text-navy-200">{report.answer_accuracy.percentage.toFixed(2)}% · {report.answer_accuracy.numerator} exact numeric matches out of {report.answer_accuracy.denominator} prompts. 95% Wilson interval: {report.answer_accuracy.confidence_95_percent.lower.toFixed(2)}%–{report.answer_accuracy.confidence_95_percent.upper.toFixed(2)}%.</p>
+              {answerReport?.answer_accuracy ? (
+                <p className="mt-1 text-sm text-navy-200">{answerReport.answer_accuracy.percentage.toFixed(2)}% · {answerReport.answer_accuracy.numerator} correct out of {answerReport.answer_accuracy.denominator} labeled prompts. 95% Wilson interval: {answerReport.answer_accuracy.confidence_95_percent.lower.toFixed(2)}%–{answerReport.answer_accuracy.confidence_95_percent.upper.toFixed(2)}%.</p>
               ) : (
                 <p className="mt-1 text-sm text-navy-200">Not measured in the latest run. Run the optional tutor benchmark to score numeric answers; this is not a 0% result.</p>
               )}
             </div>
           </div>
-          <span className="w-fit flex-shrink-0 rounded-full border border-warning-300/30 bg-warning-300/10 px-3 py-1 text-xs font-semibold text-warning-200">Synthetic diagnostic</span>
+          <span className="w-fit flex-shrink-0 rounded-full border border-warning-300/30 bg-warning-300/10 px-3 py-1 text-xs font-semibold text-warning-200">{answerReport === realReport && realReport ? 'Uploaded-data diagnostic' : 'Not measured'}</span>
         </div>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5 sm:p-6">
           <h3 className="font-semibold">Embedding retrieval quality</h3>
-          {report ? (
+          {retrievalReport ? (
             <>
-              <p className="mt-1 text-sm text-navy-200">Hit@5: {report.retrieval.hit_at_5_percent.toFixed(2)}% ({report.retrieval.numerator}/{report.retrieval.denominator}); Precision@5: {report.retrieval.precision_at_5_percent.toFixed(2)}%; MRR@5: {report.retrieval.mrr_at_5_percent.toFixed(2)}%; nDCG@5: {report.retrieval.ndcg_at_5_percent.toFixed(2)}%.</p>
-              <p className="mt-2 text-xs leading-relaxed text-navy-300">Embedding model: {report.embedding_model}. Benchmark scope: {report.sample_size} held-out synthetic queries across {report.topic_count} topics. One formula passage is labeled relevant for each query, so Hit@5 and Recall@5 are equal; Precision@5 divides the single relevant result by five.</p>
+              <p className="mt-1 text-sm text-navy-200">Hit@5: {retrievalReport.retrieval.hit_at_5_percent.toFixed(2)}% ({retrievalReport.retrieval.numerator}/{retrievalReport.retrieval.denominator}); Precision@5: {retrievalReport.retrieval.precision_at_5_percent.toFixed(2)}%; MRR@5: {retrievalReport.retrieval.mrr_at_5_percent.toFixed(2)}%; nDCG@5: {retrievalReport.retrieval.ndcg_at_5_percent.toFixed(2)}%.</p>
+              <p className="mt-2 text-xs leading-relaxed text-navy-300">Embedding model: {retrievalReport.embedding_model}. Benchmark scope: {retrievalReport.sample_size} {realReport === retrievalReport ? 'sampled questions from uploaded labeled datasets' : 'held-out synthetic formula queries'}. These scores use the source chunk as the relevance label.</p>
             </>
           ) : (
             <p className="mt-1 text-sm text-navy-200">No benchmark report is available yet. Run the retrieval evaluation to publish measured results here.</p>
           )}
         </div>
 
-        <p className="mt-3 text-xs leading-relaxed text-navy-300">Results are synthetic diagnostics, not expert-reviewed general-purpose model scores. Learner practice accuracy is a separate student metric.</p>
+        <p className="mt-3 text-xs leading-relaxed text-navy-300">Uploaded-data results use the answer labels supplied with those datasets and have not been independently expert-validated. Synthetic and real-data results are diagnostics, not general-purpose model scores. Learner practice accuracy is a separate student metric.</p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           {METRICS.map(({ group, icon: Icon, items }) => (

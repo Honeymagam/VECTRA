@@ -57,15 +57,21 @@ All protected routes use `Authorization: Bearer <access_token>`. Register/login 
 
 ## Model accuracy and retrieval evaluation
 
-The signed-in **Model Accuracy** page shows the latest measured benchmark report; it does not display placeholder scores. Run the held-out embedding retrieval evaluation from the project root with the configured embedding provider credentials:
+The **Model Accuracy** page shows measured benchmark reports; it does not display placeholder scores. Run the synthetic embedding retrieval evaluation from the project root with the configured embedding provider credentials:
 
 ```bash
 python scripts/evaluate_tutor_benchmark.py
 ```
 
-The default run sends 100 retrieval queries to the configured embedding provider and writes `data/generated/model_evaluation_latest.json`. The API reads this file, and Docker Compose mounts it into the backend so the page can show the report. Provider usage may incur charges. To additionally measure tutor numeric exact-match accuracy, run `python scripts/evaluate_tutor_benchmark.py --include-tutor`; this makes 100 chat requests to the configured tutor model.
+The default run sends 100 retrieval queries to the configured embedding provider and writes `data/generated/model_evaluation_latest.json`. For a real-data evaluation, run this after the labeled CSV uploads finish indexing:
 
-The report measures embedding retrieval with Hit@5, Precision@5, MRR@5, and nDCG@5; with `--include-tutor`, it also measures numeric exact-match answer accuracy and its 95% Wilson interval. The page shows per-topic percentages. The questions are synthetic and each has one relevant formula passage, so these are diagnostic measurements, not expert-reviewed or general-purpose model scores. Numeric matching does not assess explanation quality or factuality.
+```powershell
+docker compose exec backend python scripts/evaluate_real_dataset.py
+```
+
+The real-data run samples up to 25 labeled question rows from each completed, non-synthetic CSV, evaluates tutor answer choices and retrieval against the uploaded answer keys and indexed source chunks, and writes `data/generated/model_evaluation_real_latest.json`. Both reports are mounted into the API so the page and landing page can display them. Real-data evaluation makes chat and embedding provider requests and may incur usage charges. To additionally measure tutor numeric exact-match accuracy on the synthetic set, run `python scripts/evaluate_tutor_benchmark.py --include-tutor`.
+
+Reports measure embedding retrieval with Hit@5, Precision@5, MRR@5, and nDCG@5. The labeled real-data report also includes multiple-choice answer accuracy, class-level precision/recall/F1, and a 95% Wilson interval. Results are diagnostics: real dataset answer labels have not been independently expert-validated, and synthetic exact matching does not assess explanation quality or factuality.
 
 ## Architecture
 

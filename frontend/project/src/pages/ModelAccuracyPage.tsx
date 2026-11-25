@@ -38,6 +38,7 @@ export default function ModelAccuracyPage() {
   }, []);
 
   const report: ModelEvaluationReport | null = view.kind === 'ready' ? view.data.report : null;
+  const realReport: ModelEvaluationReport | null = view.kind === 'ready' ? view.data.real_data_report : null;
 
   return (
     <>
@@ -50,7 +51,7 @@ export default function ModelAccuracyPage() {
       {view.kind === 'loading' && <StatePanel variant="loading" title="Loading evaluation" message="Fetching the latest benchmark report…" />}
       {view.kind === 'error' && <StatePanel variant="error" title="Could not load model evaluation" message="Check your connection and refresh." />}
 
-      {view.kind === 'ready' && !report && (
+      {view.kind === 'ready' && !report && !realReport && (
         <div className="space-y-5">
           <StatePanel
             variant="empty"
@@ -107,7 +108,7 @@ export default function ModelAccuracyPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-sm">
                 <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-navy-500"><tr><th className="px-5 py-3">Topic</th><th className="px-5 py-3 text-right">Questions</th><th className="px-5 py-3 text-right">Tutor accuracy</th><th className="px-5 py-3 text-right">Retrieval Hit@5</th><th className="px-5 py-3 text-right">MRR@5</th></tr></thead>
-                <tbody className="divide-y divide-neutral-100">{Object.entries(report.per_topic).map(([topic, stats]) => <tr key={topic}><th scope="row" className="px-5 py-3 font-medium text-navy-800">{topic}</th><td className="px-5 py-3 text-right tabular-nums">{stats.questions}</td><td className="px-5 py-3 text-right tabular-nums">{stats.answer_accuracy_percent === null ? '—' : `${stats.answer_accuracy_percent.toFixed(1)}%`}</td><td className="px-5 py-3 text-right tabular-nums">{stats.retrieval_hit_at_5_percent.toFixed(1)}%</td><td className="px-5 py-3 text-right tabular-nums">{stats.mrr_at_5_percent.toFixed(1)}%</td></tr>)}</tbody>
+                <tbody className="divide-y divide-neutral-100">{Object.entries(report.per_topic ?? {}).map(([topic, stats]) => <tr key={topic}><th scope="row" className="px-5 py-3 font-medium text-navy-800">{topic}</th><td className="px-5 py-3 text-right tabular-nums">{stats.questions}</td><td className="px-5 py-3 text-right tabular-nums">{stats.answer_accuracy_percent === null ? '—' : `${stats.answer_accuracy_percent.toFixed(1)}%`}</td><td className="px-5 py-3 text-right tabular-nums">{stats.retrieval_hit_at_5_percent.toFixed(1)}%</td><td className="px-5 py-3 text-right tabular-nums">{stats.mrr_at_5_percent.toFixed(1)}%</td></tr>)}</tbody>
               </table>
             </div>
           </section>
@@ -116,6 +117,30 @@ export default function ModelAccuracyPage() {
             <h2 className="text-sm font-semibold text-warning-900">Read these scores as diagnostics</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-warning-900">{report.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>
           </section>
+        </div>
+      )}
+
+      {realReport && (
+        <div className="mt-8 space-y-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary-600">Real uploaded datasets</p>
+            <h2 className="mt-1 text-xl font-bold text-navy-900">Labeled question benchmark</h2>
+            <p className="mt-1 text-sm text-navy-500">{realReport.sample_size} sampled questions across {realReport.dataset_count} completed non-synthetic CSV datasets.</p>
+          </div>
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="Real dataset model metrics">
+            {realReport.answer_accuracy?.percentage != null && <PercentCard label="Real-data answer accuracy" value={realReport.answer_accuracy.percentage} detail={`${realReport.answer_accuracy.numerator} correct / ${realReport.answer_accuracy.denominator} answered questions`} icon={Target} />}
+            <PercentCard label="Real-data Hit@5" value={realReport.retrieval.hit_at_5_percent} detail="Questions whose source chunk ranked in top 5" icon={ChartNoAxesCombined} />
+            <PercentCard label="Real-data Precision@5" value={realReport.retrieval.precision_at_5_percent} detail="Relevant source chunks among five results" icon={Target} />
+            <PercentCard label="Real-data MRR@5" value={realReport.retrieval.mrr_at_5_percent} detail="Ranks the source chunk higher when it appears earlier" icon={BrainCircuit} />
+            {realReport.answer_accuracy?.macro_f1_percent != null && <PercentCard label="Macro F1" value={realReport.answer_accuracy.macro_f1_percent} detail="Average F1 across answer choices A–D" icon={BrainCircuit} />}
+          </section>
+          <section className="rounded-2xl border border-neutral-200/80 bg-white shadow-card">
+            <div className="border-b border-neutral-100 px-5 py-4"><h3 className="text-base font-semibold text-navy-900">Results by uploaded dataset</h3></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-neutral-50 text-xs uppercase tracking-wide text-navy-500"><tr><th className="px-5 py-3">Dataset</th><th className="px-5 py-3 text-right">Questions</th><th className="px-5 py-3 text-right">Answer accuracy</th><th className="px-5 py-3 text-right">Retrieval Hit@5</th><th className="px-5 py-3 text-right">MRR@5</th></tr></thead><tbody className="divide-y divide-neutral-100">{Object.entries(realReport.datasets ?? {}).map(([name, stats]) => <tr key={name}><th scope="row" className="px-5 py-3 font-medium text-navy-800">{name}</th><td className="px-5 py-3 text-right tabular-nums">{stats.questions}</td><td className="px-5 py-3 text-right tabular-nums">{stats.answer_accuracy_percent == null ? `Not measured (${stats.answered_questions ?? 0} answered)` : `${stats.answer_accuracy_percent.toFixed(1)}%`}</td><td className="px-5 py-3 text-right tabular-nums">{stats.retrieval_hit_at_5_percent.toFixed(1)}%</td><td className="px-5 py-3 text-right tabular-nums">{stats.mrr_at_5_percent.toFixed(1)}%</td></tr>)}</tbody></table></div>
+          </section>
+          <p className="text-xs leading-relaxed text-navy-500">This run uses completed indexed uploads only, samples up to 50 labeled rows per CSV, and scores the configured tutor using each question’s retrieved chunks and the dataset’s answer key. Run it again with <code>docker compose exec backend python scripts/evaluate_real_dataset.py</code> after new uploads finish indexing.</p>
+          {realReport.answer_accuracy?.per_class && <section className="rounded-2xl border border-neutral-200/80 bg-white p-5 shadow-card"><h3 className="text-base font-semibold text-navy-900">Multiple-choice precision, recall, and F1</h3><p className="mt-1 text-sm text-navy-500">Class-level scores show how often each answer letter is predicted correctly; macro F1 gives each letter equal weight.</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{Object.entries(realReport.answer_accuracy.per_class).map(([label, metrics]) => <div key={label} className="rounded-xl bg-neutral-50 p-4"><p className="text-sm font-semibold text-navy-900">Option {label} · {metrics.support} labels</p><p className="mt-2 text-xs text-navy-600">Precision {metrics.precision_percent.toFixed(1)}% · Recall {metrics.recall_percent.toFixed(1)}% · F1 {metrics.f1_percent.toFixed(1)}%</p></div>)}</div></section>}
+          <section className="rounded-2xl border border-warning-200 bg-warning-50 p-5"><h3 className="text-sm font-semibold text-warning-900">Real-data evaluation limits</h3><ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-warning-900">{realReport.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul>{realReport.answer_accuracy && <p className="mt-2 text-xs text-warning-900">95% Wilson interval for answer accuracy: {realReport.answer_accuracy.confidence_95_percent.lower.toFixed(1)}%–{realReport.answer_accuracy.confidence_95_percent.upper.toFixed(1)}%.</p>}</section>
         </div>
       )}
     </>

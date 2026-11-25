@@ -59,14 +59,15 @@ def embeddings(data:EmbeddingIn):
  return {'object':'list','model':settings.embedding_model,'data':[{'object':'embedding','index':index,'embedding':vector} for index,vector in enumerate(vectors)]}
 @app.get('/api/model-evaluation/latest',tags=['Model Evaluation'])
 def latest_model_evaluation():
- report_path=Path(__file__).resolve().parents[1]/'data'/'generated'/'model_evaluation_latest.json'
- report=None
- if report_path.is_file():
-  try:report=json.loads(report_path.read_text(encoding='utf-8'))
+ report_dir=Path(__file__).resolve().parents[1]/'data'/'generated'
+ def read_report(name):
+  report_path=report_dir/name
+  if not report_path.is_file():return None
+  try:return json.loads(report_path.read_text(encoding='utf-8'))
   except (OSError,json.JSONDecodeError):
-   log.exception('Could not read model evaluation report')
+   log.exception('Could not read model evaluation report %s',report_path.name)
    raise HTTPException(500,'The latest model evaluation report could not be read.')
- return {'embedding_model':settings.embedding_model,'tutor_model':settings.llm_model if settings.llm_provider.lower() in {'openai','openai_compatible'} else settings.llm_provider,'report':report}
+ return {'embedding_model':settings.embedding_model,'tutor_model':settings.llm_model if settings.llm_provider.lower() in {'openai','openai_compatible'} else settings.llm_provider,'report':read_report('model_evaluation_latest.json'),'real_data_report':read_report('model_evaluation_real_latest.json')}
 def token_pair(user):
  s=get_settings();return TokenOut(access_token=create_token(str(user.id),'access',timedelta(minutes=s.access_token_expire_minutes)),refresh_token=create_token(str(user.id),'refresh',timedelta(days=s.refresh_token_expire_days)))
 
